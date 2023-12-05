@@ -79,10 +79,10 @@ class Stalker(Client):
         self,
         member: Union[User, Member],
         channel: Union[TextChannel, ForumChannel, VoiceChannel],
-        limit: int = configxd.limit or 1000,
+        limit: int = configxd.limit,
     ):
         with contextlib.suppress(Forbidden):
-            messages = [message async for message in channel.history(limit=None)]
+            messages = [message async for message in channel.history(limit=limit)]
             new_messages = []
             counter = 0
             while not counter >= limit:
