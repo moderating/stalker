@@ -111,7 +111,7 @@ class Stalker(Client):
             elif isinstance(channel, PrivateChannel):
                 return f"https://discord.com/channels/@me/{channel.id}"
             elif isinstance(channel, Thread):
-                return channel.channel.jump_url + "/" + str(channel.id)
+                return channel.jump_url
 
     async def sizecheck(self, files: List[File], size: int):
         if size > FILE_LIMIT:
