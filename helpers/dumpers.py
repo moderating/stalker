@@ -149,11 +149,13 @@ async def dump_messages(messages: List[Message]) -> Tuple[List[dict], List[File]
                 else None,
             }
         )
-        fileslist.append(files)
-        fileslist.append([f for l in reply[1] for f in l if f.filename not in added_files] if reply else None)
-        added_files.update([file.filename for file in files[0]])
-        added_files.update([file.filename for l in reply[1] for file in l])
+        if files is not None:
+            fileslist.append(files)
+            added_files.update([file.filename for file in files[0]])
 
+        if reply is not None:
+            fileslist.append([f for l in reply[1] for f in l if f.filename not in added_files])
+            added_files.update([file.filename for l in reply[1] for file in l])
     return (
         listXD,
         [files for files in fileslist if files],
