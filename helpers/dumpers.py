@@ -96,10 +96,9 @@ async def get_roles(member: Member) -> List[Dict]:
     ]
 
 
-async def dump_messages(messages: List[Message]) -> Tuple[List[dict], List[File]]:
+async def dump_messages(messages: List[Message]) -> Tuple[List[dict], Set[File]]:
     listXD: List[dict] = []
-    fileslist: List[File] = []
-    added_files = set()
+    fileslist: Set[File] = set()
 
     for message in messages:
         files = await getfiles(message)
@@ -136,11 +135,11 @@ async def dump_messages(messages: List[Message]) -> Tuple[List[dict], List[File]
                 },
                 "embeds": [embed.to_dict() for embed in message.embeds],
                 "attachments": [
-                    f"<File filename={file.filename}>" for file in files[0] if file.filename not in added_files
+                    f"<File filename={file.filename}>" for file in files[0]
                 ],
                 "reactions": await dump_reactions(message.reactions),
                 "created_at": message.created_at.strftime("%m/%d/%Y %H:%M:%S %p"),
-                "reply": reply[0] if reply else None,
+                "reply": reply[0][0] if reply else None,
                 "sticker": [
                     {"name": sticker.name, "id": sticker.id, "url": sticker.url}
                     for sticker in message.stickers
@@ -149,16 +148,13 @@ async def dump_messages(messages: List[Message]) -> Tuple[List[dict], List[File]
                 else None,
             }
         )
-        if files is not None:
-            fileslist.append(files)
-            added_files.update([file.filename for file in files[0]])
-
-        if reply is not None:
-            fileslist.append([f for l in reply[1] for f in l if f.filename not in added_files])
-            added_files.update([file.filename for l in reply[1] for file in l])
+        fileslist.add(files)
+        fileslist.add([_file for _files in reply[1] for _file in _files] if reply else None)
+    if None in fileslist:
+        fileslist.remove(None)
     return (
         listXD,
-        [files for files in fileslist if files],
+        list(fileslist),
     )
 
 
@@ -177,7 +173,7 @@ async def zip_files(files: List[File]):
             zip_file.writestr("empty", b"")
         else:
             for file in files:
-                if file.filename not in added_files:
+                if file not in added_files:
                     zip_file.writestr(file.filename, file.fp.read())
                     added_files.add(file.filename)
                 file.fp.seek(0)
