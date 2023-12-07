@@ -99,6 +99,8 @@ async def get_roles(member: Member) -> List[Dict]:
 async def dump_messages(messages: List[Message]) -> Tuple[List[dict], List[File]]:
     listXD: List[dict] = []
     fileslist: List[File] = []
+    added_files = set()
+
     for message in messages:
         files = await getfiles(message)
         reply = (
@@ -134,7 +136,7 @@ async def dump_messages(messages: List[Message]) -> Tuple[List[dict], List[File]
                 },
                 "embeds": [embed.to_dict() for embed in message.embeds],
                 "attachments": [
-                    f"<File filename={file.filename}>" for file in files[0]
+                    f"<File filename={file.filename}>" for file in files[0] if file.filename not in added_files
                 ],
                 "reactions": await dump_reactions(message.reactions),
                 "created_at": message.created_at.strftime("%m/%d/%Y %H:%M:%S %p"),
@@ -148,7 +150,10 @@ async def dump_messages(messages: List[Message]) -> Tuple[List[dict], List[File]
             }
         )
         fileslist.append(files)
-        fileslist.append(reply[1] if reply else None)
+        fileslist.append([f for l in reply[1] for f in l if f.filename not in added_files] if reply else None)
+        added_files.update([file.filename for file in files[0]])
+        added_files.update([file.filename for l in reply[1] for file in l])
+
     return (
         listXD,
         [files for files in fileslist if files],
@@ -163,13 +168,16 @@ async def boost(member: Member) -> datetime | str:
 
 async def zip_files(files: List[File]):
     buffer = BytesIO()
+    added_files = set()
 
     with ZipFile(buffer, "a", ZIP_DEFLATED, False) as zip_file:
         if not files:
             zip_file.writestr("empty", b"")
         else:
             for file in files:
-                zip_file.writestr(file.filename, file.fp.read())
+                if file.filename not in added_files:
+                    zip_file.writestr(file.filename, file.fp.read())
+                    added_files.add(file.filename)
                 file.fp.seek(0)
 
     buffer.seek(0)
