@@ -64,7 +64,7 @@ async def getfiles(message: Message) -> Tuple[List[File], int]:
                     exc_info=e,
                 )
     return (
-        files,
+        tuple(files),
         counter,
     )
 
@@ -148,8 +148,8 @@ async def dump_messages(messages: List[Message]) -> Tuple[List[dict], Set[File]]
                 else None,
             }
         )
-        fileslist.add(files)
-        fileslist.add([_file for _files in reply[1] for _file in _files] if reply else None)
+        fileslist.add(tuple(files))  # Convert the list of files to a tuple before adding it to the fileslist set
+        fileslist.add(tuple([_file for _files in reply[1] for _file in _files]) if reply else None)  # Convert the list of files to a tuple before adding it to the fileslist set
     if None in fileslist:
         fileslist.remove(None)
     return (
@@ -164,7 +164,7 @@ async def boost(member: Member) -> datetime | str:
     return "❌"
 
 
-async def zip_files(files: List[File]):
+async def zip_files(files: Union[List[File], Set[File], Tuple[File]]):
     buffer = BytesIO()
     added_files = set()
 
@@ -175,7 +175,7 @@ async def zip_files(files: List[File]):
             for file in files:
                 if file not in added_files:
                     zip_file.writestr(file.filename, file.fp.read())
-                    added_files.add(file.filename)
+                    added_files.add(file)
                 file.fp.seek(0)
 
     buffer.seek(0)
