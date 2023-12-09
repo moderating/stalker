@@ -148,8 +148,8 @@ async def dump_messages(messages: List[Message]) -> Tuple[List[dict], Set[File]]
                 else None,
             }
         )
-        fileslist.add(tuple(files))  # Convert the list of files to a tuple before adding it to the fileslist set
-        fileslist.add(tuple([_file for _files in reply[1] for _file in _files]) if reply else None)  # Convert the list of files to a tuple before adding it to the fileslist set
+        fileslist.add(tuple(files))
+        fileslist.add(tuple([_file for _files in reply[1] for _file in _files]) if reply else None)
     if None in fileslist:
         fileslist.remove(None)
     return (
