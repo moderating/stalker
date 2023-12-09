@@ -275,7 +275,7 @@ class Stalker(Client):
             ]
             files = sum(
                 [
-                    file[0]
+                    list(file[0])
                     for messages in _messages
                     for file in messages[1]
                     if messages[1]
@@ -393,7 +393,7 @@ class Stalker(Client):
     async def on_bulk_message_delete(self, messages: List[Message]):
         self.logger.info(f"Purged {len(messages)} messages")
         _messages = await dump_messages(messages)
-        files = sum([file[0] for file in _messages[1]],
+        files = sum([list(file[0]) for file in _messages[1]],
                     []) if _messages[1] else []
         _messages = _messages[0]
         zip = await zip_files(files)
