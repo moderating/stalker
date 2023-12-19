@@ -1,9 +1,12 @@
 import json
-import contextlib
 import logging
+import os
+import asyncio
+import contextlib
 from datetime import datetime
 from io import BytesIO
 from secrets import token_hex
+from aiohttp import ClientSession
 from typing import *
 from discord import (
     Client,
@@ -14,6 +17,7 @@ from discord import (
     VoiceChannel,
     Colour,
     HTTPException,
+    Thread,
     Forbidden,
     NotFound,
     Member,
@@ -24,11 +28,12 @@ from discord import (
     ForumChannel,
     Webhook,
     InvalidData,
-    Thread,
     Reaction,
+    Asset,
 )
-from discord.abc import Messageable, GuildChannel, PrivateChannel
-from aiohttp import ClientSession
+from discord.abc import Messageable, PrivateChannel, GuildChannel
+from httpx import AsyncClient, Response
+
 import configxd
 from consts import *
 from logger import miamiloggr
@@ -43,6 +48,7 @@ from helpers.dumpers import (
     voicefunc,
 )
 
+
 class Stalker(Client):
     def __init__(
         self,
@@ -55,69 +61,124 @@ class Stalker(Client):
         self.logger.addHandler(handler)
         self.gfsaccounts = configxd.stalked
         self.webhooks = configxd.webhooks
+        self.session = AsyncClient()
 
     async def match(self, obj: Union[Message, Reaction], **kwargs) -> bool | None:
         if isinstance(obj, Reaction):
             return (
                 obj.message.author.id in self.gfsaccounts
                 or kwargs.get("user").id in self.gfsaccounts
+                or any(
+                    pattern.search(obj.message.content)
+                    for pattern in configxd.message_contains
+                )
+                if configxd.matches.get("reacts_to_contains")
+                else False
             )
-        else:
-            if configxd.matches.get("user_mention"):
-                for mention in obj.mentions:
-                    if mention.id in self.gfsaccounts:
-                        return True
+        if configxd.matches.get("user_mention"):
+            for mention in obj.mentions:
+                if mention.id in self.gfsaccounts:
+                    return True
 
-            if configxd.matches.get("message_contains"):
+        if configxd.matches.get("message_contains"):
+            for pattern in configxd.message_contains:
+                if pattern.search(obj.content):
+                    return True
+            if obj.reference and isinstance(obj.reference.resolved, Message):
                 for pattern in configxd.message_contains:
-                    if pattern.search(obj.content):
+                    if pattern.search(obj.reference.resolved.content):
                         return True
 
-            return True if obj.author.id in self.gfsaccounts else False
+        return obj.author.id in self.gfsaccounts
 
-    async def userhistory(
+    async def history(
         self,
         member: Union[User, Member],
-        channel: Union[TextChannel, ForumChannel, VoiceChannel],
-        limit: int = configxd.limit,
-    ):
-        with contextlib.suppress(Forbidden):
-            messages = [message async for message in channel.history(limit=limit)]
-            new_messages = []
-            counter = 0
-            while not counter >= limit:
+        channel: Union[GuildChannel, PrivateChannel],
+        limit: int | None = configxd.limit,
+    ) -> List[Message]:
+        offset: int = 0
+        if isinstance(channel, PrivateChannel):
+            url: str = (
+                f"https://discord.com/api/v9/channels/{channel.id}/messages/search"
+            )
+        else:
+            url: str = (
+                f"https://discord.com/api/v9/guilds/{channel.guild.id}/messages/search"
+            )
+        msgs: List[Message] = []
+        while True:
+            request: Response = await self.session.get(
+                url=url,
+                headers={
+                    "Authorization": configxd.token,
+                },
+                params={
+                    "author_id": member.id,
+                    "offset": offset,
+                    "channel_id": channel.id,
+                },
+            )
+            self.logger.debug(f"Searched {offset} in #{channel} ({channel.id})")
+            if request.status_code == 200:
+                messages: List = request.json()["messages"]
+                if len(messages) == 0:
+                    self.logger.info(
+                        f"Reached end/No messages in #{channel} ({channel.id}) | @{member} ({member.id})"
+                    )
+                    return msgs
                 for message in messages:
-                    if message.author == member:
-                        counter += 1
-                        new_messages.append(message)
-            return new_messages
-        return []
+                    try:
+                        msgs.append(
+                            Message(
+                                state=self._connection, data=message[0], channel=channel
+                            )
+                        )
+                    except Exception as e:
+                        self.logger.error(e, exc_info=True)
+                if len(msgs) >= limit:
+                    self.logger.info(
+                        f"Reached limit of {limit} messages in #{channel} ({channel.id}) | @{member} ({member.id})"
+                    )
+                    return msgs
+                offset += 25
+            elif request.status_code == 429:
+                self.logger.warning(
+                    f"Rate limited, retrying in {request.json()['retry_after'] + .35}s in #{channel} ({channel.id}) | @{member} ({member.id})"
+                )
+                await asyncio.sleep(request.json()["retry_after"] + 0.35)
+            elif request.status_code == 401:
+                self.logger.error(
+                    "Unauthorized this client will probably now exit soon :p"
+                )
+                return msgs
 
-    async def readable_channels(self, guild: Guild):
+    @staticmethod
+    async def readable_channels(
+        guild: Guild,
+    ) -> List[GuildChannel]:
         return [
             channel
             for channel in (await guild.fetch_channels())
-            if isinstance(channel, TextChannel)
-            or isinstance(channel, ForumChannel)
-            or isinstance(channel, VoiceChannel)
-            and channel.permissions_for(guild.me).read_messages
+            if hasattr(channel, "history") and not isinstance(channel, Thread)
+            if channel.permissions_for(guild.me).read_messages
         ]
 
-    async def messageablejumpurl(self, channel: Messageable) -> str | bool:
+    async def messageablejumpurl(self, channel: Messageable) -> str | None:
         with contextlib.suppress(InvalidData, HTTPException, NotFound, Forbidden):
             channel = await self.fetch_channel(channel.id)
-            if isinstance(channel, GuildChannel):
-                return channel.jump_url
-            elif isinstance(channel, PrivateChannel):
+            if isinstance(channel, PrivateChannel):
                 return f"https://discord.com/channels/@me/{channel.id}"
-            elif isinstance(channel, Thread):
-                return channel.jump_url
+            else:
+                return channel.jump_url if hasattr(channel, "jump_url") else None
 
-    async def sizecheck(self, files: List[File], size: int):
+    @staticmethod
+    async def sizecheck(files: List[File], size: int) -> List[File]:
         if size > FILE_LIMIT:
-            path = configxd.pathdumps + f"/{token_hex(32)}.zip"
+            path = os.path.join(configxd.pathdumps, f"/{token_hex(50)}.zip")
+            zipfile, _ = await zip_files(files)
             with open(path, "wb") as f:
-                f.write(await zip_files(files))
+                f.write(zipfile)
             files = [
                 File(
                     fp=BytesIO(
@@ -130,15 +191,18 @@ class Stalker(Client):
             ]
         return files
 
-    async def lmfaoidkwhattoccallthesefuckingthings(self, message: Message):
+    async def lmfaoidkwhattoccallthesefuckingthings(
+        self, message: Message
+    ) -> List[File]:
         files, size = await getfiles(message)
         if files:
-            files = await self.sizecheck(files=files, size=size)
+            files: List[File] = await self.sizecheck(files=files, size=size)
         return files
 
-    async def invoke_webhook(self, webhook: str, **kwargs) -> None:
+    @staticmethod
+    async def invoke_webhook(webhook: str, **kwargs) -> None:
         async with ClientSession() as session:
-            webhook: Webhook = Webhook.from_url(webhook, session=session)
+            webhook: Webhook = Webhook.from_url(url=webhook, session=session)
             await webhook.send(**kwargs)
 
     async def on_ready(self):
@@ -165,14 +229,13 @@ class Stalker(Client):
                 ),
             )
 
-    async def on_user_update(self, before: User, after: User):
+    async def on_user_update(self, before: User, after: User) -> None:
         if before.id in self.gfsaccounts:
             self.logger.info(f"User update from {before} ({before.id})")
             embed = Embed(
                 color=Colour.dark_embed(),
                 timestamp=after.created_at,
                 title=f"Profile update from {after} ({after.id})",
-                description=f"If theres no change here check <#>",
             )
             await self.invoke_webhook(
                 self.webhooks.get("profile"),
@@ -183,15 +246,19 @@ class Stalker(Client):
             )
 
             if before.avatar != after.avatar:
-                embed = Embed(
+                embed: Embed = Embed(
                     title=f"**new avatar from {after}**",
                     color=Colour.dark_embed(),
                     timestamp=after.created_at,
                 )
-                avatar = after.default_avatar if after.avatar is None else after.avatar
-                type = "gif" if avatar.is_animated() else "png"
-                file = File(fp=BytesIO(await avatar.read()), filename=f"after.{type}")
-                embed.set_image(url=f"attachment://after.{type}")
+                avatar: Asset = (
+                    after.default_avatar if after.avatar is None else after.avatar
+                )
+                _type: Literal["gif", "png"] = "gif" if avatar.is_animated() else "png"
+                file: File = File(
+                    fp=BytesIO(await avatar.read()), filename=f"after.{_type}"
+                )
+                embed.set_image(url=f"attachment://after.{_type}")
 
                 await self.invoke_webhook(
                     self.webhooks.get("avatars"),
@@ -201,7 +268,7 @@ class Stalker(Client):
                     embed=embed,
                 )
 
-    async def on_member_boost(self, member: Member):
+    async def on_member_boost(self, member: Member) -> None:
         if member.id in self.gfsaccounts:
             self.logger.info(
                 f"{member} boosted guild {member.guild} ({member.guild.id})"
@@ -221,19 +288,21 @@ class Stalker(Client):
                 ),
             )
 
-    async def on_member_update(self, before: Member, after: Member):
+    async def on_member_update(self, before: Member, after: Member) -> None:
         if after.id in self.gfsaccounts:
             self.logger.info(f"Member update {after}")
             if not before.premium_since and after.premium_since:
                 self.dispatch("member_boost", after)
-            embed = Embed(
+            embed: Embed = Embed(
                 title=f"{after.name} member update ^_^",
                 description="```\nGuild features\n"
                 + "\n".join(after.guild.features)
                 + "\n```",
                 url=after.guild.vanity_url,
             )
-            roles = json.dumps(await get_roles(after), indent=4)
+            roles: BytesIO = BytesIO(
+                json.dumps(await get_roles(after), indent=4).encode("utf-8")
+            )
             await self.invoke_webhook(
                 self.webhooks.get("profile"),
                 username=after.name,
@@ -243,12 +312,67 @@ class Stalker(Client):
                 content=f"{after.name} member update ^_^",
                 embed=await dump_member_fields(before, after, embed),
                 files=await self.sizecheck(
-                    [File(fp=BytesIO(roles.encode("utf-8")), filename="roles.json")],
-                    len(roles.encode("utf-8")),
+                    [File(fp=roles, filename="roles.json")],
+                    len(roles.getvalue()),
                 ),
             )
 
-    async def on_member_remove(self, member: Member):
+    async def _archive(
+        self,
+        member: Member,
+        channel: Union[GuildChannel, PrivateChannel],
+    ) -> None:
+        messages: List[Message] = await self.history(
+            member=member,
+            channel=channel,
+            limit=configxd.limit,
+        )
+        if messages:
+            self.logger.info(
+                f"Archiving {len(messages)} messages from {member} ({member.id}) in {channel} ({channel.id})"
+            )
+            _messages, _files = await dump_messages(messages)
+            files: List[File] = (
+                sum([list(file[0]) for file in _files], []) if _files else []
+            )
+            _zip: Tuple[bytes, int] = await zip_files(files)
+            jsondump: BytesIO = BytesIO(
+                bytes(json.dumps(_messages, indent=4), encoding="utf-8")
+            )
+            await self.invoke_webhook(
+                self.webhooks.get("dumps"),
+                username=member.name,
+                avatar_url=member.avatar.url
+                if member.avatar
+                else member.default_avatar.url,
+                content=f"Archived {len(messages)} messages from {member} ({member.id}) in #{channel} ({channel.id})",
+                embed=Embed(
+                    color=Colour.dark_embed(),
+                    timestamp=datetime.now(),
+                    title=f"Archived {len(messages)} messages from {member} ({member.id}) in #{channel} ({channel.id})",
+                    url=await self.messageablejumpurl(channel),
+                ),
+                files=await self.sizecheck(
+                    files=[
+                        File(fp=BytesIO(_zip[0]), filename="files.zip"),
+                        File(
+                            fp=jsondump, filename=f"{channel.id}_from_{member.id}.json"
+                        ),
+                    ],
+                    size=_zip[1] + len(jsondump.getvalue()),
+                ),
+            )
+
+    async def archive_messages(self, member: Member) -> None:
+        self.logger.info(f"Archiving messages from {member} ({member.id})")
+        await asyncio.gather(
+            *[
+                self._archive(member, channel)
+                for channel in await self.readable_channels(member.guild)
+            ]
+        )
+
+    async def on_member_remove(self, member: Member) -> None:
         if member.id in self.gfsaccounts:
             self.logger.info(
                 f"{member} left, archiving {configxd.limit or ''} messages"
@@ -266,50 +390,11 @@ class Stalker(Client):
                     title=f"{member} ({member.id}) left {member.guild} ({member.guild.id}) ",
                 ),
             )
+            await self.archive_messages(member)
 
-            _messages = [
-                await dump_messages(
-                    [msg for msg in await self.userhistory(member, channel, limit=configxd.limit) if msg]
-                )
-                for channel in (await self.readable_channels(member.guild))
-            ]
-            files = sum(
-                [
-                    list(file[0])
-                    for messages in _messages
-                    for file in messages[1]
-                    if messages[1]
-                ],
-                [],
-            )
-            _messages = sum([messages[0]
-                            for messages in _messages if messages[0]], [])
-            x_x = json.dumps(_messages, indent=4)
-            intoxicated = BytesIO(bytes(x_x, encoding="utf-8"))
-            zip = await zip_files(files)
-            await self.invoke_webhook(
-                self.webhooks.get("dumps"),
-                username="dumps",
-                avatar_url=self.user.avatar.url,
-                content="dump! :eyes:",
-                embed=Embed(
-                    color=Colour.dark_embed(),
-                    timestamp=datetime.now(),
-                    title=f"dumped {len(_messages)} messages",
-                ),
-                files=await self.sizecheck(
-                    files=[
-                        File(fp=BytesIO(zip[0]), filename="files.zip"),
-                        File(fp=intoxicated, filename="dumpd.json"),
-                    ],
-                    size=zip[1] + len(intoxicated.getvalue()),
-                ),
-            )
-
-    async def on_member_join(self, member: Member):
+    async def on_member_join(self, member: Member) -> None:
         if member.id in self.gfsaccounts:
-            self.logger.info(
-                f"{member} joined {member.guild} ({member.guild.id})")
+            self.logger.info(f"{member} joined {member.guild} ({member.guild.id})")
             await self.invoke_webhook(
                 self.webhooks.get("guild"),
                 username=member.name,
@@ -324,7 +409,7 @@ class Stalker(Client):
                 ),
             )
 
-    async def on_message(self, message: Message):
+    async def on_message(self, message: Message) -> None:
         if await self.match(message):
             self.logger.info(
                 f"New message from {message.author} ; {message.clean_content}"
@@ -340,8 +425,7 @@ class Stalker(Client):
                 embed=await base_message(message),
                 files=await self.lmfaoidkwhattoccallthesefuckingthings(message=message),
             )
-            if message.reference and isinstance(
-                    message.reference.resolved, Message):
+            if message.reference and isinstance(message.reference.resolved, Message):
                 await self.invoke_webhook(
                     self.webhooks.get("messages"),
                     username=message.author.name,
@@ -355,7 +439,7 @@ class Stalker(Client):
                     ),
                 )
 
-    async def on_message_edit(self, before: Message, after: Message):
+    async def on_message_edit(self, before: Message, after: Message) -> None:
         if await self.match(before) or await self.match(after):
             self.logger.info(
                 f"Edited message from {after.author} ; before: {before.clean_content} ; after: {after.clean_content}"
@@ -367,14 +451,14 @@ class Stalker(Client):
                     avatar_url=after.author.avatar.url
                     if after.author.avatar
                     else after.author.default_avatar.url,
-                    content=f"Edited message {'before' if i == 0 else 'after'}! :eyes:",
+                    content=f"Edited message {'after' if i else 'before'}! :eyes:",
                     embeds=[
                         await base_message(message=msg),
                     ],
                     files=await self.lmfaoidkwhattoccallthesefuckingthings(message=msg),
                 )
 
-    async def on_message_delete(self, message: Message):
+    async def on_message_delete(self, message: Message) -> None:
         if await self.match(message):
             self.logger.info(
                 f"Deleted message from {message.author} ; {message.clean_content}"
@@ -390,19 +474,15 @@ class Stalker(Client):
                 files=await self.lmfaoidkwhattoccallthesefuckingthings(message),
             )
 
-    async def on_bulk_message_delete(self, messages: List[Message]):
-        self.logger.info(f"Purged {len(messages)} messages")
-        _messages = await dump_messages(messages)
-        files = sum([list(file[0]) for file in _messages[1]],
-                    []) if _messages[1] else []
-        _messages = _messages[0]
-        zip = await zip_files(files)
-        jsondump = BytesIO(
-            bytes(
-                json.dumps(
-                    _messages,
-                    indent=4),
-                encoding="utf-8"))
+    async def _purge(self, messages: List[Message]) -> None:
+        _messages, _files = await dump_messages(messages)
+        files: List[File] = (
+            sum([list(_file[0]) for _file in _files], []) if _files else []
+        )
+        _zip: Tuple[bytes, int] = await zip_files(files)
+        jsondump: BytesIO = BytesIO(
+            bytes(json.dumps(_messages, indent=4), encoding="utf-8")
+        )
         await self.invoke_webhook(
             self.webhooks.get("purge"),
             username="purge",
@@ -416,16 +496,22 @@ class Stalker(Client):
             ),
             files=await self.sizecheck(
                 files=[
-                    File(fp=BytesIO(zip[0]), filename="files.zip"),
+                    File(fp=BytesIO(_zip[0]), filename="files.zip"),
                     File(fp=jsondump, filename="purged.json"),
                 ],
-                size=zip[1] + len(jsondump.getvalue()),
+                size=_zip[1] + len(jsondump.getvalue()),
             ),
         )
 
+    async def on_bulk_message_delete(self, messages: List[Message]) -> None:
+        self.logger.info(
+            f"Purged {len(messages)} messages in #{messages[0].channel.name} ({messages[0].channel.id})"
+        )
+        await self._purge(messages)
+
     async def on_voice_state_update(
         self, member: Member, before: VoiceState, after: VoiceState
-    ):
+    ) -> None:
         if member.id in self.gfsaccounts:
             self.logger.info(f"Voice state update from {member} ({member.id})")
             await self.invoke_webhook(
@@ -438,7 +524,7 @@ class Stalker(Client):
                 embed=await voicefunc(member, before, after),
             )
 
-    async def on_guild_remove(self, guild: Guild):
+    async def on_guild_remove(self, guild: Guild) -> None:
         self.logger.warning(f"Kicked out guild {guild} ({guild.id})")
         await self.invoke_webhook(
             self.webhooks.get("guild"),
@@ -453,10 +539,11 @@ class Stalker(Client):
             ),
         )
 
-    async def on_reaction_add(self, reaction: Reaction, user: Union[User, Member]):
+    async def on_reaction_add(
+        self, reaction: Reaction, user: Union[User, Member]
+    ) -> None:
         if await self.match(reaction, user=user):
-            self.logger.info(
-                f"Reaction add from {user} ({user.id}) {reaction.emoji}")
+            self.logger.info(f"Reaction add from {user} ({user.id}) {reaction.emoji}")
             await self.invoke_webhook(
                 self.webhooks.get("messages"),
                 username=user.name,
@@ -466,7 +553,7 @@ class Stalker(Client):
                     color=Colour.dark_embed(),
                     timestamp=datetime.now(),
                     title=f"Reaction add from {user} ({user.id})",
-                    description=f"Reaction add from {user} ({user.id}), {reaction.emoji} to message {reaction.message.id}",
+                    description=f"{reaction.emoji} added to message {reaction.message.id} from {user} ({user.id})",
                 ),
             )
             await self.invoke_webhook(
@@ -484,7 +571,7 @@ class Stalker(Client):
 
     async def on_relationship_update(
         self, before: Relationship, relationship: Relationship
-    ):
+    ) -> None:
         if relationship.user.id in self.gfsaccounts:
             await self.invoke_webhook(
                 self.webhooks.get("friendships"),
@@ -495,11 +582,11 @@ class Stalker(Client):
                 content=f"{relationship.user} ({relationship.user.id}) {relationship.type}",
                 embed=Embed(
                     color=Colour.dark_embed(),
-                    title=f"Relationship update from {relationship.user} ({relationship.user.id}) {before.type} -> {relationship.type.name}",
+                    title=f"Relationship update from {relationship.user} ({relationship.user.id}) {before.type.name} -> {relationship.type.name}",
                 ),
             )
 
-    async def on_relationship_add(self, relationship: Relationship):
+    async def on_relationship_add(self, relationship: Relationship) -> None:
         if relationship.user.id in self.gfsaccounts:
             await self.invoke_webhook(
                 self.webhooks.get("friendships"),
@@ -510,11 +597,11 @@ class Stalker(Client):
                 content=f"{relationship.user} ({relationship.user.id}) added",
                 embed=Embed(
                     color=Colour.dark_embed(),
-                    title=f"Relationship added from {relationship.user} ({relationship.user.id}) (user sent friend request {relationship.type.name})",
+                    title=f"Relationship added from {relationship.user} ({relationship.user.id}) ({relationship.type.name})",
                 ),
             )
 
-    async def on_relationship_remove(self, relationship: Relationship):
+    async def on_relationship_remove(self, relationship: Relationship) -> None:
         if relationship.user.id in self.gfsaccounts:
             await self.invoke_webhook(
                 self.webhooks.get("friendships"),
@@ -530,8 +617,8 @@ class Stalker(Client):
             )
 
 
-def main():
-    stalker = Stalker()
+def main() -> None:
+    stalker: Client = Stalker()
     stalker.run(configxd.token, log_formatter=miamiloggr())
 
 

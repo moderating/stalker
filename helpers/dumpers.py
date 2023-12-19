@@ -28,7 +28,7 @@ handler.setFormatter(miamiloggr())
 logger.addHandler(handler)
 
 
-async def getfiles(message: Message) -> Tuple[List[File], int]:
+async def getfiles(message: Message) -> Tuple[Tuple[File], int]:
     files = []
     counter = 0
     for attachment in message.attachments:
@@ -71,7 +71,7 @@ async def getfiles(message: Message) -> Tuple[List[File], int]:
 
 async def dump_reactions(reactions: List[Reaction]):
     return [
-        {"emoji": reaction.emoji, "count": reaction.count, "me": reaction.me}
+        {"emoji": str(reaction.emoji), "count": reaction.count, "me": reaction.me}
         for reaction in reactions
     ]
 
@@ -135,7 +135,8 @@ async def dump_messages(messages: List[Message]) -> Tuple[List[dict], Set[File]]
                 },
                 "embeds": [embed.to_dict() for embed in message.embeds],
                 "attachments": [
-                    f"<File filename={file.filename}>" for file in files[0]
+                    f"<File filename={file.filename} md5={file.md5}>"
+                    for file in files[0]
                 ],
                 "reactions": await dump_reactions(message.reactions),
                 "created_at": message.created_at.strftime("%m/%d/%Y %H:%M:%S %p"),
@@ -149,7 +150,9 @@ async def dump_messages(messages: List[Message]) -> Tuple[List[dict], Set[File]]
             }
         )
         fileslist.add(tuple(files))
-        fileslist.add(tuple([_file for _files in reply[1] for _file in _files]) if reply else None)
+        fileslist.add(
+            tuple(_file for _files in reply[1] for _file in _files) if reply else None
+        )
     if None in fileslist:
         fileslist.remove(None)
     return (
@@ -168,9 +171,11 @@ async def zip_files(files: Union[List[File], Set[File], Tuple[File]]):
     buffer = BytesIO()
     added_files = set()
 
-    with ZipFile(buffer, "a", ZIP_DEFLATED, False) as zip_file:
+    with ZipFile(
+        file=buffer, mode="a", compresslevel=ZIP_DEFLATED, allowZip64=False
+    ) as zip_file:
         if not files:
-            zip_file.writestr("empty", b"")
+            zip_file.writestr("empty", data=b"")
         else:
             for file in files:
                 if file not in added_files:
@@ -197,7 +202,7 @@ async def dump_user_fields(before: User, after: User, embed: Embed):
 
     embed.add_field(
         name="Flags",
-        value=f"{after.public_flags}",
+        value=f"{after.public_flags.value}",
     )
     try:
         profile = await after.profile()
@@ -230,7 +235,7 @@ async def dump_user_fields(before: User, after: User, embed: Embed):
 async def dump_member_fields(before: Member, after: Member, embed: Embed):
     embed.add_field(
         name="Nickname",
-        value=f"{before.nick}{' -> ' + str(after.nick) if before.nick != after.nick else ''}",
+        value=f"{before.nick}{f' -> {str(after.nick)}' if before.nick != after.nick else ''}",
     )
     embed.add_field(
         name="Server profile",
@@ -255,7 +260,7 @@ async def dump_member_fields(before: Member, after: Member, embed: Embed):
     )
     embed.add_field(
         name="Timeout",
-        value=f"❌"
+        value="❌"
         + (
             f" -> ✅ | {after.timed_out_until.strftime('%m/%d/%Y %H:%M:%S %p')}"
             if after.timed_out_until
@@ -283,7 +288,7 @@ async def base_message(message: Message):
     )
     embed.add_field(
         name="Channel",
-        value=f"[{message.channel}](https://discord.com/channels/{'@me' if not message.guild else message.guild.id}/{message.channel.id})",
+        value=f"[{message.channel}](https://discord.com/channels/{message.guild.id if message.guild else '@me'}/{message.channel.id})",
     )
     embed.add_field(
         name="Guild",
@@ -325,30 +330,31 @@ async def base_message(message: Message):
     )
     return embed
 
+
 async def voicefunc(member: Member, before: VoiceState, after: VoiceState):
-        embed = Embed(
-            color=Colour.dark_embed(),
-            title=f"Voice state update from {member} ({member.id})",
-            description=f"**Voice state update from {member} ({member.id}) ^_^**",
-        )
-        embed.add_field(
-            name="Channel?",
-            value=f"{before.channel.jump_url or '❌' if before.channel else '❌'} -> {after.channel.jump_url or '❌' if after.channel else '❌'}",
-        )
-        embed.add_field(
-            name="Muted?",
-            value=f"{'✅' if before.self_mute or before.mute else '❌' if before else '❌'} -> {'✅' if after.self_mute or after.mute else '❌' if after else '❌'}",
-        )
-        embed.add_field(
-            name="Deafened?",
-            value=f"Before: {'✅' if before.self_deaf or before.self_deaf else '❌' if before else '❌'} -> {'✅' if after.self_deaf or after.self_deaf else '❌' if after else '❌'}",
-        )
-        embed.add_field(
-            name="Streaming?",
-            value=f"Before: {'✅' if before.self_stream else '❌' if before else '❌'} -> {'✅' if before.self_stream else '❌' if before else '❌'}",
-        )
-        embed.add_field(
-            name="Cammed up?",
-            value=f"Before: {'✅' if before.self_video else '❌' if before else '❌'} -> {'✅' if after.self_video else '❌' if after else '❌'}",
-        )
-        return embed
+    embed = Embed(
+        color=Colour.dark_embed(),
+        title=f"Voice state update from {member} ({member.id})",
+        description=f"**Voice state update from {member} ({member.id}) ^_^**",
+    )
+    embed.add_field(
+        name="Channel?",
+        value=f"{before.channel.jump_url or '❌' if before.channel else '❌'} -> {after.channel.jump_url or '❌' if after.channel else '❌'}",
+    )
+    embed.add_field(
+        name="Muted?",
+        value=f"{'✅' if before.self_mute or before.mute else '❌' if before else '❌'} -> {'✅' if after.self_mute or after.mute else '❌' if after else '❌'}",
+    )
+    embed.add_field(
+        name="Deafened?",
+        value=f"Before: {'✅' if before.self_deaf or before.self_deaf else '❌' if before else '❌'} -> {'✅' if after.self_deaf or after.self_deaf else '❌' if after else '❌'}",
+    )
+    embed.add_field(
+        name="Streaming?",
+        value=f"Before: {'✅' if before.self_stream else '❌' if before else '❌'} -> {'✅' if before.self_stream else '❌' if before else '❌'}",
+    )
+    embed.add_field(
+        name="Cammed up?",
+        value=f"Before: {'✅' if before.self_video else '❌' if before else '❌'} -> {'✅' if after.self_video else '❌' if after else '❌'}",
+    )
+    return embed

@@ -4,7 +4,7 @@ from os.path import join
 from pathlib import Path
 import re
 
-stalked: List[int] = [] # Users to stalk
+stalked: List[int] = []  # Users to stalk
 
 pathdumps: PathLike = join(Path(__file__).parent.resolve(), "dumps")
 
@@ -22,13 +22,9 @@ webhooks: Dict[str, str] = {
     "avatars": "",
     "friendships": "",
     "dumps": "",
-} # Edit these with the discord webhooks ur using
+}  # Edit these with the discord webhooks ur using
 
-message_contains: List[re.Pattern] = [
-    re.compile(
-        r"regex patterns"
-    )
-]
+message_contains: List[re.Pattern] = [re.compile(r"regex patterns")]
 
 matches: Dict[str, bool] = {
     "user_mention": True,
