@@ -1,3 +1,3 @@
-discord.py-self
+git+https://github.com/dolfies/discord.py-self
 aiohttp[speedups]
 httpx
