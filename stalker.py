@@ -68,12 +68,12 @@ class Stalker(Client):
             return (
                 obj.message.author.id in self.gfsaccounts
                 or kwargs.get("user").id in self.gfsaccounts
-                or any(
+                or (any(
                     pattern.search(obj.message.content)
                     for pattern in configxd.message_contains
                 )
                 if configxd.matches.get("reacts_to_contains")
-                else False
+                else False)
             )
         if configxd.matches.get("user_mention"):
             for mention in obj.mentions:
