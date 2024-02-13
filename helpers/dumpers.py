@@ -71,7 +71,11 @@ async def getfiles(message: Message) -> Tuple[Tuple[File], int]:
 
 async def dump_reactions(reactions: List[Reaction]):
     return [
-        {"emoji": str(reaction.emoji), "count": reaction.count, "me": reaction.me}
+        {
+            "emoji": str(reaction.emoji),
+            "count": reaction.count,
+            "me": reaction.me,
+        }
         for reaction in reactions
     ]
 
@@ -175,7 +179,7 @@ async def zip_files(files: Union[List[File], Set[File], Tuple[File]]):
         file=buffer, mode="a", compresslevel=ZIP_DEFLATED, allowZip64=False
     ) as zip_file:
         if not files:
-            zip_file.writestr("empty", data=b"")
+            zip_file.writestr("e", data=b"")
         else:
             for file in files:
                 if file not in added_files:
@@ -197,7 +201,8 @@ async def dump_user_fields(before: User, after: User, embed: Embed):
         value=f"[Before]({before.avatar or before.default_avatar}){f' -> [After]({after.avatar or after.default_avatar})' if before.avatar != after.avatar else ''}",
     )
     embed.add_field(
-        name="Banner", value=f"[After]({after.banner or after.accent_color})"
+        name="Banner",
+        value=f"{f'[Banner]({after.banner.url})' if after.banner else f'Accent Color: {after.accent_color}'}",
     )
 
     embed.add_field(
@@ -270,91 +275,37 @@ async def dump_member_fields(before: Member, after: Member, embed: Embed):
     return embed
 
 
-async def base_message(message: Message):
-    embed = Embed(
-        description=message.content,
-        color=Colour.dark_embed(),
-        timestamp=message.created_at,
-        title=f"New message from {message.author} in #{message.channel}",
-        url=message.jump_url,
-    )
-    embed.add_field(
-        name="Message",
-        value=f"[{message.id}]({message.jump_url})",
-    )
-    embed.add_field(
-        name="Author",
-        value=f"[{message.author}](https://discord.com/users/{message.author.id})",
-    )
-    embed.add_field(
-        name="Channel",
-        value=f"[{message.channel}](https://discord.com/channels/{message.guild.id if message.guild else '@me'}/{message.channel.id})",
-    )
-    embed.add_field(
-        name="Guild",
-        value=f"{message.guild} ({message.guild.id})"
-        if message.guild
-        else "No guild found",
-    )
-    embed.add_field(
-        name="Attachments",
-        value=f"{len(message.attachments)} attachments",
-    )
-    embed.add_field(
-        name="Embeds",
-        value=f"{len(message.embeds)} embeds",
-    )
-    embed.add_field(
-        name="Reactions",
-        value=f"{len(message.reactions)} reactions",
-    )
-    embed.add_field(
-        name="Sticker",
-        value=f"[{message.stickers[0].name} - {message.stickers[0].id}]({message.stickers[0].url})"
-        if message.stickers
-        else "❌",
-    )
-    embed.add_field(
-        name="Reply",
-        value=f"[{message.reference.resolved.author} - message: {message.reference.resolved.id}]({message.reference.resolved.jump_url})"
-        if message.reference and isinstance(message.reference.resolved, Message)
-        else "❌",
-    ),
-    embed.add_field(
-        name="Pinned?",
-        value=f"{'✅' if message.pinned else '❌'}",
-    ),
-    embed.add_field(
-        name="Mentions",
-        value=f"{len(message.mentions)} mentions",
-    )
-    return embed
-
-
 async def voicefunc(member: Member, before: VoiceState, after: VoiceState):
-    embed = Embed(
+    return Embed(
         color=Colour.dark_embed(),
-        title=f"Voice state update from {member} ({member.id})",
-        description=f"**Voice state update from {member} ({member.id}) ^_^**",
+        description=f"""
+        **Voice state update from {member} ({member.id})**
+        Channel: {before.channel.jump_url or '❌' if before.channel else '❌'} -> {after.channel.jump_url or '❌' if after.channel else '❌'}
+        Muted: {'✅' if before.self_mute or before.mute else '❌' if before else '❌'} -> {'✅' if after.self_mute or after.mute else '❌' if after else '❌'}
+        Deafened: {'✅' if before.deaf or before.self_deaf else '❌' if before else '❌'} -> {'✅' if after.deaf or after.self_deaf else '❌' if after else '❌'}
+        Streaming: {'✅' if before.self_stream else '❌' if before else '❌'} -> {'✅' if before.self_stream else '❌' if before else '❌'}
+        Camera: {'✅' if before.self_video else '❌' if before else '❌'} -> {'✅' if after.self_video else '❌' if after else '❌'}
+        """,
     )
-    embed.add_field(
-        name="Channel?",
-        value=f"{before.channel.jump_url or '❌' if before.channel else '❌'} -> {after.channel.jump_url or '❌' if after.channel else '❌'}",
+
+
+async def parse_message_content(message: Message) -> str:
+    types = {
+        0: message.content,
+        1: f"{message.author} added {', '.join([str(m) for m in message.mentions])} to the group",
+        2: f"{message.author} removed {', '.join([str(m) for m in message.mentions])} from the group",
+        3: f"{message.author} started a call | Participants: {', '.join([str(m) for m in message.call.participants])}"
+        if message.call
+        else "",
+        4: f"{message.author} changed the channel name: {getattr(message.channel, 'name', 'Direct Messages')}",
+        5: f"{message.author} changed the channel icon",
+        6: f"{message.author} pinned a [message](https://discord.com/channels/{getattr(message.guild, 'id', '@me')}/{message.reference.channel_id}/{message.reference.message_id})"
+        if message.reference
+        else "",
+        7: f"{message.author} joined [{message.guild}](https://discord.com/channels/{getattr(message.guild, 'id', '@me')})!",
+        8: f"{message.author} has boosted {f'{message.content} times' if message.content else ''}",
+        19: message.content,
+    }
+    return (
+        types.get(message.type.value, message.content or message.type.name) or "\u200b"
     )
-    embed.add_field(
-        name="Muted?",
-        value=f"{'✅' if before.self_mute or before.mute else '❌' if before else '❌'} -> {'✅' if after.self_mute or after.mute else '❌' if after else '❌'}",
-    )
-    embed.add_field(
-        name="Deafened?",
-        value=f"Before: {'✅' if before.self_deaf or before.self_deaf else '❌' if before else '❌'} -> {'✅' if after.self_deaf or after.self_deaf else '❌' if after else '❌'}",
-    )
-    embed.add_field(
-        name="Streaming?",
-        value=f"Before: {'✅' if before.self_stream else '❌' if before else '❌'} -> {'✅' if before.self_stream else '❌' if before else '❌'}",
-    )
-    embed.add_field(
-        name="Cammed up?",
-        value=f"Before: {'✅' if before.self_video else '❌' if before else '❌'} -> {'✅' if after.self_video else '❌' if after else '❌'}",
-    )
-    return embed
