@@ -436,7 +436,7 @@ class Stalker(Client):
                                     "style": 5,
                                     "url": sticker.url,
                                 }
-                                for sticker in message.stickers
+                                for sticker in message.reference.resolved.stickers
                             ],
                         }
                     ],
@@ -493,7 +493,7 @@ class Stalker(Client):
                                     "type": 2,
                                     "label": "Jump to message",
                                     "style": 5,
-                                    "url": msg.reference.jump_url,
+                                    "url": msg.jump_url,
                                 }
                             ]
                             + [
