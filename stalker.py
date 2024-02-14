@@ -428,13 +428,13 @@ class Stalker(Client):
                                     "style": 5,
                                     "url": message.reference.jump_url
                                 },
-                                {
+                                ({
                                     "type": 2,
                                     "label": f"Sticker: {sticker.name}",
                                     "style": 5,
                                     "url": sticker.url,
                                 }
-                                for sticker in message.reference.resolved.stickers
+                                for sticker in message.reference.resolved.stickers)
                             ],
                         }
                     ],
@@ -456,13 +456,13 @@ class Stalker(Client):
                                     "style": 5,
                                     "url": message.jump_url
                             },
-                            {
+                            ({
                                 "type": 2,
                                 "label": f"Sticker: {sticker.name}",
                                 "style": 5,
                                 "url": sticker.url,
                             }
-                            for sticker in message.stickers
+                            for sticker in message.stickers)
                         ],
                     }
                 ],
@@ -491,13 +491,13 @@ class Stalker(Client):
                                     "style": 5,
                                     "url": msg.jump_url
                                 },
-                                {
+                                ({
                                     "type": 2,
                                     "label": f"Sticker: {sticker.name}",
                                     "style": 5,
                                     "url": sticker.url,
                                 }
-                                for sticker in msg.stickers
+                                for sticker in msg.stickers)
                             ],
                         }
                     ],
@@ -626,13 +626,13 @@ class Stalker(Client):
                                     "style": 5,
                                     "url": reaction.message.jump_url
                                 },
-                            {
+                            ({
                                 "type": 2,
                                 "label": f"Sticker: {sticker.name}",
                                 "style": 5,
                                 "url": sticker.url,
                             }
-                            for sticker in reaction.message.stickers
+                            for sticker in reaction.message.stickers)
                         ],
                     }
                 ],
