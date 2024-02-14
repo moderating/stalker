@@ -171,7 +171,7 @@ class Stalker(Client):
             if isinstance(channel, PrivateChannel):
                 return f"https://discord.com/channels/@me/{channel.id}"
             else:
-                return getattr(channel, "jump_url", None)
+                return channel.jump_url if hasattr(channel, "jump_url") else None
 
     @staticmethod
     async def sizecheck(files: List[File], size: int) -> List[File]:
@@ -225,7 +225,8 @@ class Stalker(Client):
                     color=Colour.dark_embed(),
                     timestamp=when,
                     description=f"Typing from {user} ({user.id}) in {channel} ({channel.id})",
-                    components=[
+                ),
+                components=[
                         {
                             "type": 1,
                             "components": [
@@ -234,13 +235,12 @@ class Stalker(Client):
                                     "label": f"Jump to channel {'' if url else '(no jump_url)'}",
                                     "style": 5,
                                     "url": url or "https://discord.com",
-                                    "disabled": bool(url)
+                                    "disabled": not url,
                                 },
-                            ]
+                            ],
                         }
-                    ]
-                ),
-            ) 
+                    ],
+            )
 
     async def on_user_update(self, before: User, after: User) -> None:
         if before.id in self.stalked:
@@ -426,15 +426,17 @@ class Stalker(Client):
                                     "type": 2,
                                     "label": "Jump to message",
                                     "style": 5,
-                                    "url": message.reference.jump_url
-                                },
-                                ({
+                                    "url": message.reference.jump_url,
+                                }
+                            ]
+                            + [
+                                {
                                     "type": 2,
                                     "label": f"Sticker: {sticker.name}",
                                     "style": 5,
                                     "url": sticker.url,
                                 }
-                                for sticker in message.reference.resolved.stickers)
+                                for sticker in message.stickers
                             ],
                         }
                     ],
@@ -451,18 +453,20 @@ class Stalker(Client):
                         "type": 1,
                         "components": [
                             {
-                                    "type": 2,
-                                    "label": "Jump to message",
-                                    "style": 5,
-                                    "url": message.jump_url
-                            },
-                            ({
+                                "type": 2,
+                                "label": "Jump to message",
+                                "style": 5,
+                                "url": message.jump_url,
+                            }
+                        ]
+                        + [
+                            {
                                 "type": 2,
                                 "label": f"Sticker: {sticker.name}",
                                 "style": 5,
                                 "url": sticker.url,
                             }
-                            for sticker in message.stickers)
+                            for sticker in message.stickers
                         ],
                     }
                 ],
@@ -489,15 +493,17 @@ class Stalker(Client):
                                     "type": 2,
                                     "label": "Jump to message",
                                     "style": 5,
-                                    "url": msg.jump_url
-                                },
-                                ({
+                                    "url": msg.reference.jump_url,
+                                }
+                            ]
+                            + [
+                                {
                                     "type": 2,
                                     "label": f"Sticker: {sticker.name}",
                                     "style": 5,
                                     "url": sticker.url,
                                 }
-                                for sticker in msg.stickers)
+                                for sticker in msg.stickers
                             ],
                         }
                     ],
@@ -621,18 +627,20 @@ class Stalker(Client):
                         "type": 1,
                         "components": [
                             {
-                                    "type": 2,
-                                    "label": "Jump to message",
-                                    "style": 5,
-                                    "url": reaction.message.jump_url
-                                },
-                            ({
+                                "type": 2,
+                                "label": "Jump to message",
+                                "style": 5,
+                                "url": reaction.message.jump_url,
+                            }
+                        ]
+                        + [
+                            {
                                 "type": 2,
                                 "label": f"Sticker: {sticker.name}",
                                 "style": 5,
                                 "url": sticker.url,
                             }
-                            for sticker in reaction.message.stickers)
+                            for sticker in reaction.message.stickers
                         ],
                     }
                 ],
