@@ -171,7 +171,7 @@ class Stalker(Client):
             if isinstance(channel, PrivateChannel):
                 return f"https://discord.com/channels/@me/{channel.id}"
             else:
-                return channel.jump_url if hasattr(channel, "jump_url") else None
+                return getattr(channel, "jump_url", None)
 
     @staticmethod
     async def sizecheck(files: List[File], size: int) -> List[File]:
@@ -216,6 +216,7 @@ class Stalker(Client):
     ):
         if user.id in self.stalked:
             self.logger.info(f"{user} is typing in {channel}")
+            url = await self.messageablejumpurl(channel)
             await self.invoke_webhook(
                 self.webhooks.get("messages"),
                 username=user.name,
@@ -224,10 +225,22 @@ class Stalker(Client):
                     color=Colour.dark_embed(),
                     timestamp=when,
                     description=f"Typing from {user} ({user.id}) in {channel} ({channel.id})",
-                    title=f"**{user} ({user.id}) typing**",
-                    url=await self.messageablejumpurl(channel),
+                    components=[
+                        {
+                            "type": 1,
+                            "components": [
+                                {
+                                    "type": 2,
+                                    "label": f"Jump to channel {'' if url else '(no jump_url)'}",
+                                    "style": 5,
+                                    "url": url or "https://discord.com",
+                                    "disabled": bool(url)
+                                },
+                            ]
+                        }
+                    ]
                 ),
-            )
+            ) 
 
     async def on_user_update(self, before: User, after: User) -> None:
         if before.id in self.stalked:
@@ -411,16 +424,20 @@ class Stalker(Client):
                             "components": [
                                 {
                                     "type": 2,
+                                    "label": "Jump to message",
+                                    "style": 5,
+                                    "url": message.reference.jump_url
+                                },
+                                {
+                                    "type": 2,
                                     "label": f"Sticker: {sticker.name}",
                                     "style": 5,
                                     "url": sticker.url,
                                 }
-                                for sticker in message.stickers
+                                for sticker in message.reference.resolved.stickers
                             ],
                         }
-                    ]
-                    if message.stickers
-                    else None,
+                    ],
                 )
             await self.invoke_webhook(
                 self.webhooks.get("messages"),
@@ -434,6 +451,12 @@ class Stalker(Client):
                         "type": 1,
                         "components": [
                             {
+                                    "type": 2,
+                                    "label": "Jump to message",
+                                    "style": 5,
+                                    "url": message.jump_url
+                            },
+                            {
                                 "type": 2,
                                 "label": f"Sticker: {sticker.name}",
                                 "style": 5,
@@ -442,9 +465,7 @@ class Stalker(Client):
                             for sticker in message.stickers
                         ],
                     }
-                ]
-                if message.stickers
-                else None,
+                ],
             )
 
     async def on_message_edit(self, before: Message, after: Message) -> None:
@@ -466,6 +487,12 @@ class Stalker(Client):
                             "components": [
                                 {
                                     "type": 2,
+                                    "label": "Jump to message",
+                                    "style": 5,
+                                    "url": msg.jump_url
+                                },
+                                {
+                                    "type": 2,
                                     "label": f"Sticker: {sticker.name}",
                                     "style": 5,
                                     "url": sticker.url,
@@ -473,9 +500,7 @@ class Stalker(Client):
                                 for sticker in msg.stickers
                             ],
                         }
-                    ]
-                    if msg.stickers
-                    else None,
+                    ],
                 )
 
     async def on_message_delete(self, message: Message) -> None:
@@ -596,6 +621,12 @@ class Stalker(Client):
                         "type": 1,
                         "components": [
                             {
+                                    "type": 2,
+                                    "label": "Jump to message",
+                                    "style": 5,
+                                    "url": reaction.message.jump_url
+                                },
+                            {
                                 "type": 2,
                                 "label": f"Sticker: {sticker.name}",
                                 "style": 5,
@@ -604,9 +635,7 @@ class Stalker(Client):
                             for sticker in reaction.message.stickers
                         ],
                     }
-                ]
-                if reaction.message.stickers
-                else None,
+                ],
             )
 
     async def on_relationship_update(
