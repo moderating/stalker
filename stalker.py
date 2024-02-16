@@ -612,6 +612,17 @@ class Stalker(Client):
                     description=f"{reaction.emoji} added to message {reaction.message.id} from {reaction.message.author} ({reaction.message.author.id}) by {user} ({user.id})",
                 ),
                 wait=True,
+                components=[
+                    {
+                        "type": 1,
+                        "components": [
+                            {
+                                "type": 2,
+                                "label": "Jump to message",
+                                "style": 5,
+                                "url": reaction.message.jump_url,
+                            }
+                        ]}]
             )
             await self.invoke_webhook(
                 self.webhooks.get("messages"),
