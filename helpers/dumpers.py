@@ -310,7 +310,7 @@ async def parse_message_content(message: Message) -> str:
         types.get(message.type.value, message.content or message.type.name) or "\u200b"
     )
 
-async def build_components(message: Message):
+def build_components(message: Message):
     return [
                         {
                             "type": 1,
@@ -319,13 +319,12 @@ async def build_components(message: Message):
                                     "type": 2,
                                     "label": "Jump to message",
                                     "style": 5,
-                                    "url": message.reference.jump_url,
+                                    "url": message.jump_url
                                 },
                                 {    "type": 2,
                                     "label": f"{truncate(getattr(getattr(message, 'guild', None), 'name', '@me'), limit=39)}/{truncate(getattr(message.channel, 'name', 'Direct messages'), limit=40)}",
                                     "style": 5,
-                                    "url": message.channel.jump_url,
-                                    "disabled": True
+                                    "url": message.channel.jump_url
                                 }
                             ]
                             + [
