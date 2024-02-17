@@ -49,6 +49,7 @@ from helpers.dumpers import (
 )
 from helpers.brah import truncate
 
+
 class Stalker(Client):
     def __init__(
         self,
@@ -228,19 +229,19 @@ class Stalker(Client):
                     description=f"Typing from {user} ({user.id}) in {channel} ({channel.id})",
                 ),
                 components=[
-                        {
-                            "type": 1,
-                            "components": [
-                                {
-                                    "type": 2,
-                                    "label": f"Jump to channel {'' if url else '(no jump_url)'}",
-                                    "style": 5,
-                                    "url": url or "https://discord.com",
-                                    "disabled": not url,
-                                },
-                            ],
-                        }
-                    ],
+                    {
+                        "type": 1,
+                        "components": [
+                            {
+                                "type": 2,
+                                "label": f"Jump to channel {'' if url else '(no jump_url)'}",
+                                "style": 5,
+                                "url": url or "https://discord.com",
+                                "disabled": not url,
+                            },
+                        ],
+                    }
+                ],
             )
 
     async def on_user_update(self, before: User, after: User) -> None:
@@ -411,7 +412,7 @@ class Stalker(Client):
             if message.reference and isinstance(message.reference.resolved, Message):
                 x_x = await self.invoke_webhook(
                     self.webhooks.get("messages"),
-                    username=message.reference.resolved.author.name,
+                    username=f"{message.reference.resolved.author.name}⤵",
                     avatar_url=message.reference.resolved.author.display_avatar.url,
                     content=await parse_message_content(message.reference.resolved),
                     embeds=message.reference.resolved.embeds,
@@ -423,7 +424,7 @@ class Stalker(Client):
                 )
             await self.invoke_webhook(
                 self.webhooks.get("messages"),
-                username=message.author.name + (f" (reply to {x_x.id})" if x_x else ""),
+                username=message.author.name + ("⤴" if x_x else ""),
                 avatar_url=message.author.display_avatar.url,
                 content=await parse_message_content(message),
                 embeds=message.embeds,
@@ -454,7 +455,7 @@ class Stalker(Client):
             )
             await self.invoke_webhook(
                 self.webhooks.get("messages"),
-                username=f"{message.author.name} (Deleted)",
+                username=f"{message.author.name} (❌)",
                 avatar_url=message.author.display_avatar.url,
                 content=await parse_message_content(message),
                 embeds=message.embeds,
@@ -519,6 +520,27 @@ class Stalker(Client):
                 username=member.name,
                 avatar_url=member.display_avatar.url,
                 embed=await voicefunc(member, before, after),
+                components=[
+                    {
+                        "type": 1,
+                        "components": [
+                            {
+                                "type": 2,
+                                "label": "Join channel from before",
+                                "style": 5,
+                                "url": getattr(before.channel, "jump_url"),
+                                "disabled": bool(before.channel),
+                            },
+                            {
+                                "type": 2,
+                                "label": "Join channel after",
+                                "style": 5,
+                                "url": getattr(after.channel, "jump_url"),
+                                "disabled": bool(after.channel),
+                            },
+                        ],
+                    }
+                ],
             )
 
     async def on_guild_remove(self, guild: Guild) -> None:
@@ -530,7 +552,7 @@ class Stalker(Client):
             embed=Embed(
                 color=Colour.dark_embed(),
                 timestamp=datetime.now(),
-                description=f"Kicked out {guild} ({guild.id})",
+                title=f"Kicked out {guild} ({guild.id})",
                 url=guild.vanity_url,
             ),
         )
@@ -550,7 +572,8 @@ class Stalker(Client):
                     description=f"{reaction.emoji} added to message {reaction.message.id} from {reaction.message.author} ({reaction.message.author.id}) by {user} ({user.id})",
                 ),
                 wait=True,
-                components=[{
+                components=[
+                    {
                         "type": 1,
                         "components": [
                             {
@@ -559,7 +582,9 @@ class Stalker(Client):
                                 "style": 5,
                                 "url": reaction.message.jump_url,
                             }
-                        ]}]
+                        ],
+                    }
+                ],
             )
             await self.invoke_webhook(
                 self.webhooks.get("messages"),
