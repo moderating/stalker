@@ -19,7 +19,7 @@ from discord import (
     Colour,
 )
 from logger import miamiloggr
-
+from .brah import truncate
 
 logger: logging.Logger = logging.getLogger("dumpers")
 logger.setLevel(logging.INFO)
@@ -145,7 +145,7 @@ async def dump_messages(messages: List[Message]) -> Tuple[List[dict], Set[File]]
                 "reactions": await dump_reactions(message.reactions),
                 "created_at": message.created_at.strftime("%m/%d/%Y %H:%M:%S %p"),
                 "reply": reply[0][0] if reply else None,
-                "sticker": [
+                "stickers": [
                     {"name": sticker.name, "id": sticker.id, "url": sticker.url}
                     for sticker in message.stickers
                 ]
@@ -309,3 +309,33 @@ async def parse_message_content(message: Message) -> str:
     return (
         types.get(message.type.value, message.content or message.type.name) or "\u200b"
     )
+
+async def build_components(message: Message):
+    return [
+                        {
+                            "type": 1,
+                            "components": [
+                                {
+                                    "type": 2,
+                                    "label": "Jump to message",
+                                    "style": 5,
+                                    "url": message.reference.jump_url,
+                                },
+                                {    "type": 2,
+                                    "label": f"{truncate(getattr(getattr(message, "guild", None), "name", "@me"), limit=39)}/{truncate(getattr(message.channel, "name", "Direct messages"), limit=40)}",
+                                    "style": 5,
+                                    "url": message.channel.jump_url,
+                                    "disabled": True
+                                }
+                            ]
+                            + [
+                                {
+                                    "type": 2,
+                                    "label": f"Sticker: {sticker.name}",
+                                    "style": 5,
+                                    "url": sticker.url,
+                                }
+                                for sticker in message.stickers
+                            ],
+                        }
+                    ]

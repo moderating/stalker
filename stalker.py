@@ -37,6 +37,7 @@ import configxd
 from consts import *
 from logger import miamiloggr
 from helpers.dumpers import (
+    build_components,
     dump_messages,
     zip_files,
     dump_user_fields,
@@ -46,7 +47,7 @@ from helpers.dumpers import (
     voicefunc,
     parse_message_content,
 )
-
+from helpers.brah import truncate
 
 class Stalker(Client):
     def __init__(
@@ -171,7 +172,7 @@ class Stalker(Client):
             if isinstance(channel, PrivateChannel):
                 return f"https://discord.com/channels/@me/{channel.id}"
             else:
-                return channel.jump_url if hasattr(channel, "jump_url") else None
+                return getattr(channel, "jump_url", None)
 
     @staticmethod
     async def sizecheck(files: List[File], size: int) -> List[File]:
@@ -418,28 +419,7 @@ class Stalker(Client):
                         message=message.reference.resolved,
                     ),
                     wait=True,
-                    components=[
-                        {
-                            "type": 1,
-                            "components": [
-                                {
-                                    "type": 2,
-                                    "label": "Jump to message",
-                                    "style": 5,
-                                    "url": message.reference.jump_url,
-                                }
-                            ]
-                            + [
-                                {
-                                    "type": 2,
-                                    "label": f"Sticker: {sticker.name}",
-                                    "style": 5,
-                                    "url": sticker.url,
-                                }
-                                for sticker in message.reference.resolved.stickers
-                            ],
-                        }
-                    ],
+                    components=build_components(message=message.reference.resolved),
                 )
             await self.invoke_webhook(
                 self.webhooks.get("messages"),
@@ -448,28 +428,7 @@ class Stalker(Client):
                 content=await parse_message_content(message),
                 embeds=message.embeds,
                 files=await self.lmfaoidkwhattoccallthesefuckingthings(message=message),
-                components=[
-                    {
-                        "type": 1,
-                        "components": [
-                            {
-                                "type": 2,
-                                "label": "Jump to message",
-                                "style": 5,
-                                "url": message.jump_url,
-                            }
-                        ]
-                        + [
-                            {
-                                "type": 2,
-                                "label": f"Sticker: {sticker.name}",
-                                "style": 5,
-                                "url": sticker.url,
-                            }
-                            for sticker in message.stickers
-                        ],
-                    }
-                ],
+                components=build_components(message),
             )
 
     async def on_message_edit(self, before: Message, after: Message) -> None:
@@ -485,28 +444,7 @@ class Stalker(Client):
                     content=await parse_message_content(msg),
                     embeds=msg.embeds,
                     files=await self.lmfaoidkwhattoccallthesefuckingthings(message=msg),
-                    components=[
-                        {
-                            "type": 1,
-                            "components": [
-                                {
-                                    "type": 2,
-                                    "label": "Jump to message",
-                                    "style": 5,
-                                    "url": msg.jump_url,
-                                }
-                            ]
-                            + [
-                                {
-                                    "type": 2,
-                                    "label": f"Sticker: {sticker.name}",
-                                    "style": 5,
-                                    "url": sticker.url,
-                                }
-                                for sticker in msg.stickers
-                            ],
-                        }
-                    ],
+                    components=build_components(message=msg),
                 )
 
     async def on_message_delete(self, message: Message) -> None:
@@ -612,8 +550,7 @@ class Stalker(Client):
                     description=f"{reaction.emoji} added to message {reaction.message.id} from {reaction.message.author} ({reaction.message.author.id}) by {user} ({user.id})",
                 ),
                 wait=True,
-                components=[
-                    {
+                components=[{
                         "type": 1,
                         "components": [
                             {
@@ -633,28 +570,7 @@ class Stalker(Client):
                 files=await self.lmfaoidkwhattoccallthesefuckingthings(
                     reaction.message
                 ),
-                components=[
-                    {
-                        "type": 1,
-                        "components": [
-                            {
-                                "type": 2,
-                                "label": "Jump to message",
-                                "style": 5,
-                                "url": reaction.message.jump_url,
-                            }
-                        ]
-                        + [
-                            {
-                                "type": 2,
-                                "label": f"Sticker: {sticker.name}",
-                                "style": 5,
-                                "url": sticker.url,
-                            }
-                            for sticker in reaction.message.stickers
-                        ],
-                    }
-                ],
+                components=build_components(message=reaction.message),
             )
 
     async def on_relationship_update(
