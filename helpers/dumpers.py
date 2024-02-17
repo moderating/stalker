@@ -322,7 +322,7 @@ async def build_components(message: Message):
                                     "url": message.reference.jump_url,
                                 },
                                 {    "type": 2,
-                                    "label": f"{truncate(getattr(getattr(message, "guild", None), "name", "@me"), limit=39)}/{truncate(getattr(message.channel, "name", "Direct messages"), limit=40)}",
+                                    "label": f"{truncate(getattr(getattr(message, 'guild', None), 'name', '@me'), limit=39)}/{truncate(getattr(message.channel, 'name', 'Direct messages'), limit=40)}",
                                     "style": 5,
                                     "url": message.channel.jump_url,
                                     "disabled": True
