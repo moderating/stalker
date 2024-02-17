@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import sys
 import asyncio
 import contextlib
 from datetime import datetime
@@ -54,7 +55,7 @@ class Stalker(Client):
     def __init__(
         self,
     ) -> None:
-        super().__init__()
+        super().__init__(max_messages=sys.maxsize)
         self.logger: logging.Logger = logging.getLogger("stalker")
         self.logger.setLevel(logging.DEBUG)
         handler: logging.Handler = logging.StreamHandler()
