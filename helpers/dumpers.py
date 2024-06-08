@@ -283,7 +283,7 @@ async def voicefunc(member: Member, before: VoiceState, after: VoiceState):
         Channel: {before.channel.jump_url or '❌' if before.channel else '❌'} -> {after.channel.jump_url or '❌' if after.channel else '❌'}
         Muted: {'✅' if before.self_mute or before.mute else '❌' if before else '❌'} -> {'✅' if after.self_mute or after.mute else '❌' if after else '❌'}
         Deafened: {'✅' if before.deaf or before.self_deaf else '❌' if before else '❌'} -> {'✅' if after.deaf or after.self_deaf else '❌' if after else '❌'}
-        Streaming: {'✅' if before.self_stream else '❌' if before else '❌'} -> {'✅' if before.self_stream else '❌' if before else '❌'}
+        Streaming: {'✅' if before.self_stream else '❌' if before else '❌'} -> {'✅' if after.self_stream else '❌' if after else '❌'}
         Camera: {'✅' if before.self_video else '❌' if before else '❌'} -> {'✅' if after.self_video else '❌' if after else '❌'}
         """,
     )
